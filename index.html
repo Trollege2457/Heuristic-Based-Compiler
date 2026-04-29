@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ambiguity Analyzer</title>
+
+    <!-- Prism CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/prismjs/themes/prism-tomorrow.css" rel="stylesheet" />
+
+    <!-- Prism JS -->
+    <script src="https://cdn.jsdelivr.net/npm/prismjs/prism.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-clike.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f5f7fa;
+            margin: 0;
+        }
+
+        .container {
+            width: 80%;
+            margin: auto;
+            margin-top: 40px;
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        h1 { text-align: center; color: #2c3e50; }
+        h2 { color: #2f8d46; }
+
+        label { font-weight: bold; }
+
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            background: #2f8d46;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover { background: #256f38; }
+
+        .hidden { display: none; }
+
+        pre {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            background: #2f8d46;
+            color: white;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .badge.invalid {
+            background: red;
+        }
+
+        .trees {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 25px;
+        }
+
+        img {
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>Ambiguity Analyzer</h1>
+
+    <form id="form">
+        <label>Choose Mode:</label>
+        <select name="choice" id="mode">
+            <option value="1">Grammar Analysis</option>
+            <option value="2">Expression Analysis</option>
+        </select>
+
+        <div id="grammarBox">
+            <label>Upload grammar.txt:</label>
+            <input type="file" name="grammar">
+        </div>
+
+        <div id="exprBox" class="hidden">
+            <label>Expression:</label>
+            <input type="text" name="expr" placeholder="Enter expression like a-b-c;">
+        </div>
+
+        <button type="submit">Run Analysis</button>
+    </form>
+
+    <h2>Output</h2>
+
+    <div id="typeBadge"></div>
+
+    <pre><code id="output" class="language-clike"></code></pre>
+
+    <!-- TREES -->
+    <div id="treesContainer" class="trees hidden">
+        <div id="treeBox1">
+            <h3>Tree 1</h3>
+            <div id="tree1"></div>
+        </div>
+        <div id="treeBox2">
+            <h3>Tree 2</h3>
+            <div id="tree2"></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const mode = document.getElementById("mode");
+const exprBox = document.getElementById("exprBox");
+const grammarBox = document.getElementById("grammarBox");
+const trees = document.getElementById("treesContainer");
+
+const treeBox1 = document.getElementById("treeBox1");
+const treeBox2 = document.getElementById("treeBox2");
+
+/* --------- TOGGLE UI --------- */
+mode.addEventListener("change", () => {
+    if (mode.value === "1") {
+        grammarBox.classList.remove("hidden");
+        exprBox.classList.add("hidden");
+        trees.classList.add("hidden");  // always hide trees
+    } else {
+        grammarBox.classList.add("hidden");
+        exprBox.classList.remove("hidden");
+    }
+});
+
+/* --------- SUBMIT --------- */
+document.getElementById("form").onsubmit = async function(e) {
+    e.preventDefault();
+
+    let formData = new FormData();
+    formData.append("choice", mode.value);
+
+    // RESET UI
+    document.getElementById("output").textContent = "";
+    document.getElementById("typeBadge").innerHTML = "";
+    document.getElementById("tree1").innerHTML = "";
+    document.getElementById("tree2").innerHTML = "";
+
+    trees.classList.add("hidden");
+    treeBox1.style.display = "none";
+    treeBox2.style.display = "none";
+
+    if (mode.value === "1") {
+        const file = document.querySelector('input[name="grammar"]').files[0];
+        if (file) formData.append("grammar", file);
+    } else {
+        const expr = document.querySelector('input[name="expr"]').value;
+        formData.append("expr", expr);
+    }
+
+    let res = await fetch("/run", {
+        method: "POST",
+        body: formData
+    });
+
+    let data = await res.json();
+
+    const outputBlock = document.getElementById("output");
+    const badge = document.getElementById("typeBadge");
+
+    /* --------- OUTPUT --------- */
+    outputBlock.textContent = data.text;
+    Prism.highlightElement(outputBlock);
+
+    /* --------- BADGE --------- */
+    if (data.text.includes("TYPE=INVALID")) {
+        badge.innerHTML = `<span class="badge invalid">INVALID</span>`;
+    }
+    else if (data.text.includes("TYPE=")) {
+        let type = data.text.split("\n")[0].replace("TYPE=", "");
+        badge.innerHTML = `<span class="badge">${type}</span>`;
+    }
+
+    /* --------- TREE DISPLAY LOGIC --------- */
+    if (mode.value === "2" && (data.img1 || data.img2)) {
+        trees.classList.remove("hidden");
+
+        if (data.img1) {
+            treeBox1.style.display = "block";
+            document.getElementById("tree1").innerHTML =
+                `<img src="${data.img1}" width="320">`;
+        }
+
+        if (data.img2) {
+            treeBox2.style.display = "block";
+            document.getElementById("tree2").innerHTML =
+                `<img src="${data.img2}" width="320">`;
+        }
+    }
+};
+</script>
+
+</body>
+</html>
